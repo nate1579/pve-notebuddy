@@ -2121,7 +2121,7 @@ function createConfigLocationInput(initialValue = "", initialIcon = "📁") {
   const iconClear = document.createElement("button");
   iconClear.type = "button";
   iconClear.className = "icon-clear";
-  iconClear.textContent = "X";
+  iconClear.textContent = "✕";
   iconClear.title = "Clear icon";
   iconClear.addEventListener("click", () => {
     iconInput.value = "";
@@ -2139,8 +2139,8 @@ function createConfigLocationInput(initialValue = "", initialIcon = "📁") {
 
   const remove = document.createElement("button");
   remove.type = "button";
-  remove.className = "panel-action ghost";
-  remove.textContent = "X";
+  remove.className = "icon-clear";
+  remove.textContent = "✕";
   remove.addEventListener("click", () => {
     row.remove();
     renderOutput();
