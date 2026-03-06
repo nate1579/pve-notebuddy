@@ -258,21 +258,10 @@
             </div>
           </fieldset>
 
-          <fieldset class="group" data-row-key="custom">
-            <legend>Custom Notes</legend>
-            <div class="row-grid row-controls no-icon">
-              <div class="style-tools" data-prefix="custom"></div>
-              <div class="row-reorder">
-                <button type="button" class="row-visibility" data-row-key="custom" title="Hide row" aria-label="Hide row" aria-pressed="false">●</button>
-                <button type="button" class="row-move" data-row-key="custom" data-direction="up" title="Move up">↑</button>
-                <button type="button" class="row-move" data-row-key="custom" data-direction="down" title="Move down">↓</button>
-              </div>
-            </div>
-            <div class="row-grid row-fields">
-              <textarea id="customText" class="span-2" rows="4" placeholder="Any additional note..."></textarea>
-            </div>
-          </fieldset>
         </form>
+        <div class="panel-form-actions">
+          <button id="addCustomRowBtn" type="button" class="panel-action">ADD CUSTOM NOTE</button>
+        </div>
       </section>
 
         <section class="panel panel-preview">

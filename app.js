@@ -53,6 +53,7 @@ const hostEntriesEl = document.getElementById("hostEntries");
 const addHostBtn = document.getElementById("addHostBtn");
 const networkEntriesEl = document.getElementById("networkEntries");
 const addNetworkBtn = document.getElementById("addNetworkBtn");
+const addCustomRowBtn = document.getElementById("addCustomRowBtn");
 
 let activeTheme = "dark";
 let iconResolvedSrc = "";
@@ -67,19 +68,58 @@ let publicTemplateCatalog = [];
 const presetLoadFlashTimers = new WeakMap();
 let blockImportedRemoteCustomImages = false;
 
-const rowConfigs = [
+const staticRowConfigs = [
   { prefix: "title", defaultAlign: "center", defaultTag: "h2", bold: false, italic: false, strong: false, code: false },
   { prefix: "fqdn", defaultAlign: "center", defaultTag: "h3", bold: false, italic: false, strong: false, code: false },
   { prefix: "network", defaultAlign: "center", defaultTag: "h3", bold: false, italic: false, strong: false, code: false },
   { prefix: "config", defaultAlign: "center", defaultTag: "none", bold: false, italic: true, strong: true, code: true },
-  { prefix: "custom", defaultAlign: "left", defaultTag: "none", bold: false, italic: false, strong: false, code: false },
 ];
-const ROW_KEYS = ["icon", "title", "fqdn", "network", "config", "custom"];
+const customRowDefaults = { prefix: "custom", defaultAlign: "left", defaultTag: "none", bold: false, italic: false, strong: false, code: false };
+const STATIC_ROW_KEYS = ["icon", "title", "fqdn", "network", "config"];
+const CUSTOM_ROW_KEY_RE = /^custom[1-9][0-9]*$/;
 const APP_VERSION = document.querySelector('meta[name="app-version"]')?.getAttribute("content")?.trim() || "dev";
 
 // ===== Generic DOM / Value Helpers =====
 function getEl(id) {
   return document.getElementById(id);
+}
+
+function normalizeCustomRowKey(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "custom") {
+    return "custom1";
+  }
+  return CUSTOM_ROW_KEY_RE.test(raw) ? raw : "";
+}
+
+function isCustomRowKey(value) {
+  return Boolean(normalizeCustomRowKey(value));
+}
+
+function isValidRowKey(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  return STATIC_ROW_KEYS.includes(raw) || isCustomRowKey(raw);
+}
+
+function normalizeRowKey(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (STATIC_ROW_KEYS.includes(raw)) {
+    return raw;
+  }
+  return normalizeCustomRowKey(raw);
+}
+
+function getCustomRowFieldsets() {
+  return Array.from(form.querySelectorAll('fieldset[data-row-key]')).filter((fieldset) => isCustomRowKey(fieldset.getAttribute("data-row-key")));
+}
+
+function getNextCustomRowKey() {
+  const maxExisting = getCustomRowFieldsets().reduce((max, fieldset) => {
+    const key = normalizeCustomRowKey(fieldset.getAttribute("data-row-key"));
+    const num = Number.parseInt(key.replace("custom", ""), 10);
+    return Number.isFinite(num) ? Math.max(max, num) : max;
+  }, 0);
+  return `custom${maxExisting + 1}`;
 }
 
 function getSelectedRadioValue(name, fallback = "") {
@@ -781,7 +821,7 @@ function styleToolbarHtml(prefix, defaults) {
 }
 
 function mountStyleToolbars() {
-  for (const config of rowConfigs) {
+  for (const config of staticRowConfigs) {
     const holder = document.querySelector(`.style-tools[data-prefix="${config.prefix}"]`);
     if (!holder) {
       continue;
@@ -790,54 +830,63 @@ function mountStyleToolbars() {
   }
 }
 
-// Keep conflicting style toggles mutually exclusive.
-function bindStyleConflicts() {
-  for (const { prefix } of rowConfigs) {
-    const bold = getEl(`${prefix}Bold`);
-    const strong = getEl(`${prefix}Strong`);
-    const headingToggles = form.querySelectorAll(`input[name="${prefix}Heading"]`);
-    if (!bold || !strong) {
-      continue;
-    }
+function bindStyleConflictsForPrefix(prefix) {
+  const bold = getEl(`${prefix}Bold`);
+  const strong = getEl(`${prefix}Strong`);
+  const headingToggles = form.querySelectorAll(`input[name="${prefix}Heading"]`);
+  if (!bold || !strong) {
+    return;
+  }
+  if (bold.dataset.boundStyleConflicts === "1") {
+    return;
+  }
+  bold.dataset.boundStyleConflicts = "1";
+  strong.dataset.boundStyleConflicts = "1";
 
-    for (const headingToggle of headingToggles) {
-      headingToggle.addEventListener("change", () => {
-        if (headingToggle.checked) {
-          for (const other of headingToggles) {
-            if (other !== headingToggle) {
-              other.checked = false;
-            }
+  for (const headingToggle of headingToggles) {
+    headingToggle.addEventListener("change", () => {
+      if (headingToggle.checked) {
+        for (const other of headingToggles) {
+          if (other !== headingToggle) {
+            other.checked = false;
           }
-          bold.checked = false;
-          strong.checked = false;
         }
-        renderOutput();
-      });
-    }
-
-    bold.addEventListener("change", () => {
-      if (bold.checked && strong.checked) {
+        bold.checked = false;
         strong.checked = false;
       }
-      if (bold.checked) {
-        for (const headingToggle of headingToggles) {
-          headingToggle.checked = false;
-        }
-      }
       renderOutput();
     });
+  }
 
-    strong.addEventListener("change", () => {
-      if (strong.checked && bold.checked) {
-        bold.checked = false;
+  bold.addEventListener("change", () => {
+    if (bold.checked && strong.checked) {
+      strong.checked = false;
+    }
+    if (bold.checked) {
+      for (const headingToggle of headingToggles) {
+        headingToggle.checked = false;
       }
-      if (strong.checked) {
-        for (const headingToggle of headingToggles) {
-          headingToggle.checked = false;
-        }
+    }
+    renderOutput();
+  });
+
+  strong.addEventListener("change", () => {
+    if (strong.checked && bold.checked) {
+      bold.checked = false;
+    }
+    if (strong.checked) {
+      for (const headingToggle of headingToggles) {
+        headingToggle.checked = false;
       }
-      renderOutput();
-    });
+    }
+    renderOutput();
+  });
+}
+
+// Keep conflicting style toggles mutually exclusive.
+function bindStyleConflicts() {
+  for (const { prefix } of staticRowConfigs) {
+    bindStyleConflictsForPrefix(prefix);
   }
 }
 
@@ -848,10 +897,10 @@ function getFormat(prefix) {
   return {
     align: checkedAlign ? checkedAlign.value : "center",
     tag: checkedHeading ? checkedHeading.value : "none",
-    bold: getEl(`${prefix}Bold`).checked,
-    italic: getEl(`${prefix}Italic`).checked,
-    strong: getEl(`${prefix}Strong`).checked,
-    code: getEl(`${prefix}Code`).checked,
+    bold: Boolean(getEl(`${prefix}Bold`)?.checked),
+    italic: Boolean(getEl(`${prefix}Italic`)?.checked),
+    strong: Boolean(getEl(`${prefix}Strong`)?.checked),
+    code: Boolean(getEl(`${prefix}Code`)?.checked),
   };
 }
 
@@ -1187,7 +1236,7 @@ function updateRowVisibilityUi(rowKey) {
     if (!(control instanceof HTMLInputElement || control instanceof HTMLSelectElement || control instanceof HTMLTextAreaElement || control instanceof HTMLButtonElement)) {
       continue;
     }
-    if (control.classList.contains("row-move") || control.classList.contains("row-visibility")) {
+    if (control.classList.contains("row-move") || control.classList.contains("row-visibility") || control.classList.contains("row-remove")) {
       control.disabled = false;
       continue;
     }
@@ -1209,11 +1258,11 @@ function toggleRowVisibility(rowKey) {
 }
 
 function initializeRowVisibility() {
-  for (const key of ROW_KEYS) {
+  const keys = Array.from(form.querySelectorAll("fieldset[data-row-key]"))
+    .map((fieldset) => fieldset.getAttribute("data-row-key"))
+    .filter(Boolean);
+  for (const key of keys) {
     const fieldset = getRowFieldset(key);
-    if (!fieldset) {
-      continue;
-    }
     if (!fieldset.hasAttribute("data-row-visible")) {
       fieldset.setAttribute("data-row-visible", "1");
     }
@@ -1283,6 +1332,19 @@ function getNetworkEntries() {
     .filter((entry) => entry.value);
 }
 
+function getCustomRowEntries() {
+  return getCustomRowFieldsets()
+    .map((fieldset) => {
+      const key = normalizeCustomRowKey(fieldset.getAttribute("data-row-key"));
+      const textarea = fieldset.querySelector('textarea[data-custom-text="1"]');
+      return {
+        id: key,
+        text: textarea ? textarea.value : "",
+      };
+    })
+    .filter((entry) => entry.id);
+}
+
 function buildNoteHtml() {
   const byKey = {};
   const lines = [];
@@ -1326,10 +1388,13 @@ function buildNoteHtml() {
     );
   }
 
-  const customText = getEl("customText").value.trim();
-  if (customText) {
-    const format = getFormat("custom");
-    byKey.custom = [buildTextRow({ align: format.align, icon: "", textHtml: sanitizeCustomHtml(customText, true), format })];
+  for (const customRow of getCustomRowEntries()) {
+    const text = customRow.text.trim();
+    if (!text) {
+      continue;
+    }
+    const format = getFormat(customRow.id);
+    byKey[customRow.id] = [buildTextRow({ align: format.align, icon: "", textHtml: sanitizeCustomHtml(text, true), format })];
   }
 
   for (const key of getOrderedRowKeys()) {
@@ -1362,12 +1427,15 @@ function updateLengthState(noteHtml) {
 function clearTextFields() {
   iconUrlEl.value = "";
   getEl("titleText").value = "";
-  getEl("customText").value = "";
 
   hostEntriesEl.innerHTML = "";
   hostEntriesEl.append(createHostEntryInput("", "", "🔗"));
   networkEntriesEl.innerHTML = "";
   networkEntriesEl.append(createNetworkEntryInput("", "🖥️"));
+  for (const fieldset of getCustomRowFieldsets()) {
+    fieldset.remove();
+  }
+  addCustomRow();
 
   const configInputs = configLocationsEl.querySelectorAll('input[data-config-location="1"]');
   for (const input of configInputs) {
@@ -1390,6 +1458,79 @@ function collectRowState(prefix) {
   };
 }
 
+function createCustomRowFieldset(rowKey, initialText = "") {
+  const key = normalizeCustomRowKey(rowKey);
+  if (!key) {
+    return null;
+  }
+
+  const fieldset = document.createElement("fieldset");
+  fieldset.className = "group";
+  fieldset.setAttribute("data-row-key", key);
+  fieldset.setAttribute("data-row-visible", "1");
+
+  const legend = document.createElement("legend");
+  legend.textContent = "Custom Note";
+
+  const controls = document.createElement("div");
+  controls.className = "row-grid row-controls no-icon";
+
+  const tools = document.createElement("div");
+  tools.className = "style-tools";
+  tools.setAttribute("data-prefix", key);
+  tools.innerHTML = styleToolbarHtml(key, customRowDefaults);
+
+  const reorder = document.createElement("div");
+  reorder.className = "row-reorder";
+  reorder.innerHTML = `
+    <button type="button" class="row-remove" data-row-key="${key}" title="Remove row">✕</button>
+    <button type="button" class="row-visibility" data-row-key="${key}" title="Hide row" aria-label="Hide row" aria-pressed="false">◉</button>
+    <button type="button" class="row-move" data-row-key="${key}" data-direction="up" title="Move up">↑</button>
+    <button type="button" class="row-move" data-row-key="${key}" data-direction="down" title="Move down">↓</button>
+  `;
+
+  controls.append(tools, reorder);
+
+  const fields = document.createElement("div");
+  fields.className = "row-grid row-fields";
+
+  const textarea = document.createElement("textarea");
+  textarea.className = "span-2";
+  textarea.rows = 4;
+  textarea.placeholder = "Any additional note...";
+  textarea.value = initialText;
+  textarea.setAttribute("data-custom-text", "1");
+
+  fields.append(textarea);
+  fieldset.append(legend, controls, fields);
+  bindStyleConflictsForPrefix(key);
+  return fieldset;
+}
+
+function addCustomRow(initialText = "", explicitKey = "") {
+  const key = explicitKey ? normalizeCustomRowKey(explicitKey) : getNextCustomRowKey();
+  if (!key || getRowFieldset(key)) {
+    return null;
+  }
+  const fieldset = createCustomRowFieldset(key, initialText);
+  if (!fieldset) {
+    return null;
+  }
+  form.append(fieldset);
+  updateRowVisibilityUi(key);
+  return fieldset;
+}
+
+function syncCustomRows(customRows = []) {
+  for (const fieldset of getCustomRowFieldsets()) {
+    fieldset.remove();
+  }
+  const rows = customRows.length > 0 ? customRows : [{ id: "custom1", text: "" }];
+  for (const row of rows) {
+    addCustomRow(row.text || "", row.id || "");
+  }
+}
+
 // ===== Settings Import / Export =====
 function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -1408,6 +1549,23 @@ function assertEnumValue(value, allowed, label) {
   }
 }
 
+function isLegacySettingsV1(value) {
+  if (value === 1) {
+    return true;
+  }
+  const raw = String(value || "").trim().toLowerCase();
+  return raw === "1" || raw === "v1";
+}
+
+function isCurrentSettingsVersion(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  const current = String(APP_VERSION || "").trim().toLowerCase();
+  if (!current) {
+    return false;
+  }
+  return raw === current || raw === `v${current}`;
+}
+
 function validateSettingsSchema(settings, source = "settings") {
   if (!isPlainObject(settings)) {
     throw new Error("Invalid settings format.");
@@ -1420,20 +1578,20 @@ function validateSettingsSchema(settings, source = "settings") {
     }
   }
 
-  if (settings.version !== undefined && !Number.isFinite(Number(settings.version))) {
-    throw new Error(`${source} version must be numeric.`);
+  if (settings.version !== undefined && !isLegacySettingsV1(settings.version) && !isCurrentSettingsVersion(settings.version)) {
+    throw new Error(`${source} version must be v1 or ${APP_VERSION}.`);
   }
 
   if (settings.rowOrder !== undefined) {
     if (Array.isArray(settings.rowOrder)) {
       for (const key of settings.rowOrder) {
-        if (!ROW_KEYS.includes(key)) {
+        if (!isValidRowKey(key)) {
           throw new Error(`${source} rowOrder contains an unknown row key.`);
         }
       }
     } else if (isPlainObject(settings.rowOrder)) {
       for (const [key, value] of Object.entries(settings.rowOrder)) {
-        if (!ROW_KEYS.includes(key)) {
+        if (!isValidRowKey(key)) {
           throw new Error(`${source} rowOrder contains an unknown row key.`);
         }
         if (!["0", "1", 0, 1, false, true].includes(value)) {
@@ -1488,6 +1646,7 @@ function validateSettingsSchema(settings, source = "settings") {
       "hostEntries",
       "networkEntries",
       "configLocations",
+      "customRows",
       "customText",
     ]);
     for (const key of Object.keys(settings.fields)) {
@@ -1501,6 +1660,32 @@ function validateSettingsSchema(settings, source = "settings") {
     if (settings.fields.fqdnUrl !== undefined) assertMaxTextBytes(settings.fields.fqdnUrl, 4096, `${source} fields.fqdnUrl`);
     if (settings.fields.networkText !== undefined) assertMaxTextBytes(settings.fields.networkText, 4096, `${source} fields.networkText`);
     if (settings.fields.customText !== undefined) assertMaxTextBytes(settings.fields.customText, MAX_IMPORT_FILE_BYTES, `${source} fields.customText`);
+    if (settings.fields.customRows !== undefined) {
+      if (!Array.isArray(settings.fields.customRows)) {
+        throw new Error(`${source} fields.customRows must be an array.`);
+      }
+      if (settings.fields.customRows.length > 128) {
+        throw new Error(`${source} fields.customRows exceeds maximum entries.`);
+      }
+      for (const entry of settings.fields.customRows) {
+        if (!isPlainObject(entry)) {
+          throw new Error(`${source} custom row must be an object.`);
+        }
+        const allowedKeys = new Set(["id", "text"]);
+        for (const key of Object.keys(entry)) {
+          if (!allowedKeys.has(key)) {
+            throw new Error(`${source} custom row contains unsupported key "${key}".`);
+          }
+        }
+        if (entry.id !== undefined) {
+          const normalized = normalizeCustomRowKey(entry.id);
+          if (!normalized) {
+            throw new Error(`${source} custom row id must be "custom" or "customN".`);
+          }
+        }
+        if (entry.text !== undefined) assertMaxTextBytes(entry.text, MAX_IMPORT_FILE_BYTES, `${source} custom row text`);
+      }
+    }
 
     if (settings.fields.hostEntries !== undefined) {
       if (!Array.isArray(settings.fields.hostEntries)) {
@@ -1578,9 +1763,8 @@ function validateSettingsSchema(settings, source = "settings") {
     if (!isPlainObject(settings.rows)) {
       throw new Error(`${source} rows must be an object.`);
     }
-    const validPrefixes = new Set(rowConfigs.map((config) => config.prefix));
     for (const [prefix, row] of Object.entries(settings.rows)) {
-      if (!validPrefixes.has(prefix)) {
+      if (!(isCustomRowKey(prefix) || normalizeCustomRowKey(prefix) === "custom1" || ["title", "fqdn", "network", "config"].includes(prefix))) {
         throw new Error(`${source} rows contains unknown row "${prefix}".`);
       }
       if (!isPlainObject(row)) {
@@ -1606,8 +1790,11 @@ function validateSettingsSchema(settings, source = "settings") {
 
 function collectSettings() {
   const rows = {};
-  for (const { prefix } of rowConfigs) {
-    rows[prefix] = collectRowState(prefix);
+  for (const key of getOrderedRowKeys()) {
+    if (key === "icon") {
+      continue;
+    }
+    rows[key] = collectRowState(key);
   }
 
   const rowOrder = {};
@@ -1616,7 +1803,7 @@ function collectSettings() {
   }
 
   return {
-    version: 2,
+    version: APP_VERSION,
     rowOrder,
     theme: activeTheme,
     icon: {
@@ -1634,7 +1821,7 @@ function collectSettings() {
       hostEntries: getHostEntries(),
       networkEntries: getNetworkEntries(),
       configLocations: getConfigLocationEntries(),
-      customText: getEl("customText").value,
+      customRows: getCustomRowEntries(),
     },
     rows,
   };
@@ -1673,13 +1860,55 @@ async function applySettings(settings, options = {}) {
   validateSettingsSchema(settings, source || "settings");
   let blockedImportedInvalidIcon = false;
 
+  const importedCustomRows = [];
+  if (settings.fields && typeof settings.fields === "object") {
+    if (Array.isArray(settings.fields.customRows)) {
+      for (const row of settings.fields.customRows) {
+        if (!row || typeof row !== "object") {
+          continue;
+        }
+        const id = normalizeCustomRowKey(row.id || "");
+        if (!id) {
+          continue;
+        }
+        importedCustomRows.push({ id, text: String(row.text || "") });
+      }
+    } else if (typeof settings.fields.customText === "string") {
+      importedCustomRows.push({ id: "custom1", text: settings.fields.customText });
+      blockImportedRemoteCustomImages = source === "import" && /<img\b/i.test(settings.fields.customText);
+    }
+  }
+
+  if (settings.rows && typeof settings.rows === "object") {
+    for (const key of Object.keys(settings.rows)) {
+      const normalized = normalizeCustomRowKey(key);
+      if (normalized && !importedCustomRows.some((row) => row.id === normalized)) {
+        importedCustomRows.push({ id: normalized, text: "" });
+      }
+    }
+  }
+
+  if (settings.rowOrder) {
+    const keys = Array.isArray(settings.rowOrder) ? settings.rowOrder : Object.keys(settings.rowOrder);
+    for (const key of keys) {
+      const normalized = normalizeCustomRowKey(key);
+      if (normalized && !importedCustomRows.some((row) => row.id === normalized)) {
+        importedCustomRows.push({ id: normalized, text: "" });
+      }
+    }
+  }
+  blockImportedRemoteCustomImages = source === "import" && importedCustomRows.some((row) => /<img\b/i.test(String(row.text || "")));
+  syncCustomRows(importedCustomRows);
+
   if (Array.isArray(settings.rowOrder)) {
-    const requestedOrder = settings.rowOrder.filter((k) => ROW_KEYS.includes(k));
+    const requestedOrder = settings.rowOrder.map((k) => normalizeRowKey(k)).filter(Boolean);
     if (requestedOrder.length > 0) {
       reorderFieldsets(requestedOrder);
     }
   } else if (settings.rowOrder && typeof settings.rowOrder === "object") {
-    const entries = Object.entries(settings.rowOrder).filter(([key]) => ROW_KEYS.includes(key));
+    const entries = Object.entries(settings.rowOrder)
+      .map(([key, value]) => [normalizeRowKey(key), value])
+      .filter(([key]) => Boolean(key));
     if (entries.length > 0) {
       reorderFieldsets(entries.map(([key]) => key));
       for (const [key, rawVisible] of entries) {
@@ -1726,10 +1955,6 @@ async function applySettings(settings, options = {}) {
 
   if (settings.fields && typeof settings.fields === "object") {
     if (typeof settings.fields.titleText === "string") getEl("titleText").value = settings.fields.titleText;
-    if (typeof settings.fields.customText === "string") {
-      getEl("customText").value = settings.fields.customText;
-      blockImportedRemoteCustomImages = source === "import" && /<img\b/i.test(settings.fields.customText);
-    }
 
     if (Array.isArray(settings.fields.hostEntries)) {
       hostEntriesEl.innerHTML = "";
@@ -1771,10 +1996,12 @@ async function applySettings(settings, options = {}) {
   }
 
   if (settings.rows && typeof settings.rows === "object") {
-    for (const { prefix } of rowConfigs) {
-      if (settings.rows[prefix] && typeof settings.rows[prefix] === "object") {
-        applyRowState(prefix, settings.rows[prefix]);
+    for (const [key, rowState] of Object.entries(settings.rows)) {
+      const normalized = normalizeRowKey(key);
+      if (!normalized || normalized === "icon" || !rowState || typeof rowState !== "object") {
+        continue;
       }
+      applyRowState(normalized, rowState);
     }
   }
 
@@ -1896,21 +2123,13 @@ function normalizeTemplateCatalog(payload) {
 // Load template index from the canonical index.json location.
 async function loadPublicTemplateCatalog() {
   try {
-    const indexCandidates = [
-      "./templates/index.json",
-      "./templates/services/index.json",
-      "./public/index.json",
-    ];
-    for (const indexPath of indexCandidates) {
-      const res = await fetch(indexPath, { cache: "no-store" });
-      if (!res.ok) {
-        continue;
-      }
-      const payload = await res.json();
-      publicTemplateCatalog = normalizeTemplateCatalog(payload);
+    const res = await fetch("./templates/index.json", { cache: "no-store" });
+    if (!res.ok) {
+      publicTemplateCatalog = [];
       return;
     }
-    publicTemplateCatalog = [];
+    const payload = await res.json();
+    publicTemplateCatalog = normalizeTemplateCatalog(payload);
   } catch {
     publicTemplateCatalog = [];
   }
@@ -2500,11 +2719,12 @@ async function loadReleaseVersionStatus() {
 function bootstrap() {
   mountStyleToolbars();
   bindStyleConflicts();
-  initializeRowVisibility();
 
   hostEntriesEl.append(createHostEntryInput("www.proxmox.com", "https://www.proxmox.com/", "🔗"));
   networkEntriesEl.append(createNetworkEntryInput("10.2.0.40:8443", "🖥️"));
   configLocationsEl.append(createConfigLocationInput("/etc/app/config.yml"));
+  addCustomRow();
+  initializeRowVisibility();
 
   addHostBtn.addEventListener("click", () => {
     hostEntriesEl.append(createHostEntryInput("", "", "🔗"));
@@ -2518,8 +2738,16 @@ function bootstrap() {
     configLocationsEl.append(createConfigLocationInput(""));
     renderOutput();
   });
+  addCustomRowBtn.addEventListener("click", () => {
+    addCustomRow();
+    renderOutput();
+  });
 
-  form.addEventListener("input", () => {
+  form.addEventListener("input", (event) => {
+    const target = event.target;
+    if (target instanceof HTMLTextAreaElement && target.matches('textarea[data-custom-text="1"]') && blockImportedRemoteCustomImages) {
+      blockImportedRemoteCustomImages = false;
+    }
     renderOutput();
   });
   form.addEventListener("click", (event) => {
@@ -2545,6 +2773,22 @@ function bootstrap() {
       if (rowKey) {
         toggleRowVisibility(rowKey);
         renderOutput();
+      }
+      return;
+    }
+
+    const removeBtn = target.closest(".row-remove");
+    if (removeBtn instanceof HTMLElement) {
+      const rowKey = normalizeCustomRowKey(removeBtn.getAttribute("data-row-key"));
+      if (rowKey) {
+        const fieldset = getRowFieldset(rowKey);
+        if (fieldset) {
+          fieldset.remove();
+          if (getCustomRowFieldsets().length === 0) {
+            addCustomRow();
+          }
+          renderOutput();
+        }
       }
       return;
     }
@@ -2579,14 +2823,6 @@ function bootstrap() {
     radio.addEventListener("change", prepareIcon);
   }
   iconUrlEl.addEventListener("input", prepareIcon);
-  const customTextInputEl = getEl("customText");
-  if (customTextInputEl) {
-    customTextInputEl.addEventListener("input", () => {
-      if (blockImportedRemoteCustomImages) {
-        blockImportedRemoteCustomImages = false;
-      }
-    });
-  }
   iconEmbedSvgEl.addEventListener("change", () => {
     if (iconEmbedSvgEl.checked && iconResizeWsrvEl) {
       iconResizeWsrvEl.checked = false;

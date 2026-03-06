@@ -582,6 +582,12 @@ h2 {
   gap: 0.7rem;
 }
 
+.panel-form-actions {
+  margin-top: 0.75rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
 .panel-action {
   padding: 0.4rem 0.7rem;
   font-weight: 600;
@@ -769,7 +775,8 @@ textarea:focus {
 }
 
 .row-move,
-.row-visibility {
+.row-visibility,
+.row-remove {
   width: 32px;
   height: 32px;
   min-width: 32px;
@@ -795,6 +802,14 @@ textarea:focus {
   transform: translateY(-1px);
   filter: brightness(1.05);
   background: var(--ctrl-bg-hover);
+}
+
+.row-reorder .row-remove:not(:disabled):hover {
+  border-color: rgba(238, 124, 124, 0.72);
+  color: #ffc4c4;
+  background:
+    linear-gradient(180deg, rgba(238, 124, 124, 0.18), rgba(255, 255, 255, 0.01)),
+    rgba(10, 17, 30, 0.75);
 }
 
 .row-visibility[aria-pressed="false"] {
