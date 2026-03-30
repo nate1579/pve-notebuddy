@@ -12,9 +12,10 @@
  **Use a broad palette of templates for your self-hosted services &**  
  **adjust them to your needs or create notes fully from scratch in a few seconds.**
  
- **🚧 _Upcoming Version 1.5.0 is currently planned for mid to late April, packed with new features and an UI overhaul_ 🚧**<br>
- **_You are welcome to clone the dev branch to take a sneak peek._**<br>
- **_Feel free to open up an issue for feature requests/bugs/other inquiries._**
+ **🚧 _Upcoming Version 1.5.0 is currently planned for mid to late April!_ 🚧**<br>
+ _It will include a lot of new features and a complete UI overhaul<br>
+ You are welcome to clone the dev branch to take a sneak peek.<br>
+ Feel free to open up an issue for feature requests/bugs/other inquiries._
  
 </div>
 
